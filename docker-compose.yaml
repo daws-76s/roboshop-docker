@@ -25,6 +25,10 @@ services:
     - "80:80"
     depends_on:
     - catalogue
+    - cart
+    - user
+    - shipping
+    - payment
 
   redis:
     image: redis
@@ -60,3 +64,12 @@ services:
     environment:
     - RABBITMQ_DEFAULT_USER=roboshop
     - RABBITMQ_DEFAULT_PASS=roboshop123
+
+  payment:
+    container_name: payment
+    image: payment:1
+    depends_on:
+    - rabbitmq
+    - user
+    - cart
+
