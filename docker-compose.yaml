@@ -24,3 +24,15 @@ services:
     - catalogue
 
   redis:
+
+  user:
+    image: user:1
+    depdends_on:
+    - redis
+    - mongodb
+
+  cart:
+    image: cart:1
+    depdends_on:
+    - redis
+    - catalogue
