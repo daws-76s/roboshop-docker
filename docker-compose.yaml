@@ -82,7 +82,7 @@ services:
     - RABBITMQ_DEFAULT_USER=roboshop
     - RABBITMQ_DEFAULT_PASS=roboshop123
     volumes:
-    - source: mysql
+    - source: rabbitmq
       target: /var/lib/rabbitmq
       type: volume
 
