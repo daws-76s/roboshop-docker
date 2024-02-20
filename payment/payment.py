@@ -1,3 +1,5 @@
+import random
+
 import instana
 import os
 import sys
@@ -7,8 +9,6 @@ import uuid
 import json
 import requests
 import traceback
-import opentracing as ot
-import opentracing.ext.tags as tags
 from flask import Flask
 from flask import Response
 from flask import request
@@ -22,10 +22,8 @@ app = Flask(__name__)
 app.logger.setLevel(logging.INFO)
 
 CART = os.getenv('CART_HOST', 'cart')
-CART_PORT = os.getenv('CART_PORT', 8080)
 USER = os.getenv('USER_HOST', 'user')
-USER_PORT = os.getenv('USER_PORT', 8080)
-PAYMENT_GATEWAY = os.getenv('PAYMENT_GATEWAY', 'https://google.com/')
+PAYMENT_GATEWAY = os.getenv('PAYMENT_GATEWAY', 'https://paypal.com/')
 
 # Prometheus
 PromMetrics = {}
@@ -61,14 +59,9 @@ def pay(id):
 
     anonymous_user = True
 
-    # add some log info to the active trace
-    span = ot.tracer.active_span
-    span.log_kv({'id': id})
-    span.log_kv({'cart': cart})
-
     # check user exists
     try:
-        req = requests.get('http://{user}:{userPort}/check/{id}'.format(user=USER, userPort=USER_PORT, id=id))
+        req = requests.get('http://{user}:8080/check/{id}'.format(user=USER, id=id))
     except requests.exceptions.RequestException as err:
         app.logger.error(err)
         return str(err), 500
@@ -110,7 +103,7 @@ def pay(id):
     # add to order history
     if not anonymous_user:
         try:
-            req = requests.post('http://{user}:{userPort}/order/{id}'.format(user=USER, userPort=USER_PORT, id=id),
+            req = requests.post('http://{user}:8080/order/{id}'.format(user=USER, id=id),
                     data=json.dumps({'orderid': orderid, 'cart': cart}),
                     headers={'Content-Type': 'application/json'})
             app.logger.info('order history returned {}'.format(req.status_code))
@@ -120,7 +113,7 @@ def pay(id):
 
     # delete cart
     try:
-        req = requests.delete('http://{cart}:{cartPort}/cart/{id}'.format(cart=CART, cartPort=CART_PORT, id=id));
+        req = requests.delete('http://{cart}:8080/cart/{id}'.format(cart=CART, id=id));
         app.logger.info('cart delete returned {}'.format(req.status_code))
     except requests.exceptions.RequestException as err:
         app.logger.error(err)
@@ -133,36 +126,13 @@ def pay(id):
 
 def queueOrder(order):
     app.logger.info('queue order')
-    # RabbitMQ pika is not currently traced automatically
-    # opentracing tracer is automatically set to Instana tracer
-    # start a span
 
-    parent_span = ot.tracer.active_span
-    with ot.tracer.start_active_span('queueOrder', child_of=parent_span,
-            tags={
-                    'exchange': Publisher.EXCHANGE,
-                    'key': Publisher.ROUTING_KEY
-                }) as tscope:
-        tscope.span.set_tag('span.kind', 'intermediate')
-        tscope.span.log_kv({'orderid': order.get('orderid')})
-        with ot.tracer.start_active_span('rabbitmq', child_of=tscope.span,
-                tags={
-                    'exchange': Publisher.EXCHANGE,
-                    'sort': 'publish',
-                    'address': Publisher.HOST,
-                    'key': Publisher.ROUTING_KEY
-                    }
-                ) as scope:
+    # For screenshot demo requirements optionally add in a bit of delay
+    delay = int(os.getenv('PAYMENT_DELAY_MS', 0))
+    time.sleep(delay / 1000)
 
-            # For screenshot demo requirements optionally add in a bit of delay
-            delay = int(os.getenv('PAYMENT_DELAY_MS', 0))
-            time.sleep(delay / 1000)
-
-            headers = {}
-            ot.tracer.inject(scope.span.context, ot.Format.HTTP_HEADERS, headers)
-            app.logger.info('msg headers {}'.format(headers))
-
-            publisher.publish(order, headers)
+    headers = {}
+    publisher.publish(order, headers)
 
 
 def countItems(items):
